@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "extends": ["@repo/typescript-config/base.json"],
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true,
+    "baseUrl": "./",
+    "paths": {
+      "@/*": ["./src/*"]
+    },
+    "typeRoots": ["./node_modules/@types"],
+    "types": ["node"],
+    "jsx": "react-jsx",
+    "jsxImportSource": "hono/jsx",
+    "outDir": "./dist"
+  },
+  "tsc-alias": {
+    "resolveFullPaths": true
+  },
+  "exclude": ["node_modules"]
+}
