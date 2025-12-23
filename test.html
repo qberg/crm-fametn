@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Multi-Slot Stable Matching - Vendor Prefs Edition</title>
+    <style>
+      body {
+        font-family: "Segoe UI", sans-serif;
+        background: #f0f2f5;
+        padding: 20px;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr 1.2fr;
+        gap: 20px;
+        max-width: 1300px;
+        margin: auto;
+      }
+      .card {
+        background: white;
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      }
+      textarea {
+        width: 100%;
+        height: 450px;
+        font-family: monospace;
+        border: 1px solid #ddd;
+        padding: 10px;
+        box-sizing: border-box;
+        font-size: 12px;
+      }
+      button {
+        background: #28a745;
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 16px;
+        width: 100%;
+      }
+      #log {
+        background: #1e1e1e;
+        color: #d4d4d4;
+        padding: 15px;
+        border-radius: 5px;
+        height: 550px;
+        overflow-y: auto;
+        font-family: "Courier New", monospace;
+        font-size: 13px;
+      }
+      .iteration-header {
+        color: #569cd6;
+        font-weight: bold;
+        border-bottom: 1px solid #333;
+        margin: 15px 0 5px 0;
+        display: block;
+      }
+      .success {
+        color: #4ec9b0;
+      }
+      .error {
+        color: #f44747;
+      }
+      .proposal {
+        color: #ce9178;
+      }
+      .breakup {
+        color: #d16969;
+        font-style: italic;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="grid">
+      <div class="card">
+        <h3>1. Input Definition</h3>
+        <p>
+          <small
+            >Define preferences for both sides to see how the algorithm handles
+            conflicts.</small
+          >
+        </p>
+        <textarea id="inputData">
+{
+  "config": { "min": 1, "max": 2 },
+  "vendors": [
+    { "id": "V1", "prefs": ["B1", "B2"] },
+    { "id": "V2", "prefs": ["B1", "B2"] }
+  ],
+  "buyers": [
+    { "id": "B1", "slots": ["09:00", "10:00"], "prefs": ["V2", "V1"] },
+    { "id": "B2", "slots": ["10:00", "11:00"], "prefs": ["V1", "V2"] }
+  ],
+  "overlaps": {
+    "V1-B1": ["09:00", "10:00"],
+    "V1-B2": ["10:00"],
+    "V2-B1": ["09:00"],
+    "V2-B2": ["11:00"]
+  }
+}
+        </textarea>
+        <button onclick="runAlgorithm()">Run Stable Matching</button>
+      </div>
+
+      <div class="card">
+        <h3>2. Logic Trace (Gale-Shapley Multi-Slot)</h3>
+        <div id="log">Adjust JSON and click Run...</div>
+      </div>
+    </div>
+
+    <script>
+      function log(msg, type = "") {
+        const logEl = document.getElementById("log");
+        const span = document.createElement("span");
+        span.className = type;
+        span.innerHTML = msg + "<br>";
+        logEl.appendChild(span);
+        logEl.scrollTop = logEl.scrollHeight;
+      }
+
+      function runAlgorithm() {
+        document.getElementById("log").innerHTML = "";
+        let data;
+        try {
+          data = JSON.parse(document.getElementById("inputData").value);
+        } catch (e) {
+          log("JSON Error: " + e.message, "error");
+          return;
+        }
+
+        let vState = {};
+        data.vendors.forEach((v) => {
+          vState[v.id] = {
+            count: 0,
+            matchedBuyers: new Set(),
+            occupiedTimes: new Set(),
+            rejectionHistory: {},
+          };
+        });
+
+        let bState = {};
+        data.buyers.forEach((b) => {
+          bState[b.id] = {
+            accepted: [],
+            proposals: [],
+            capacity: b.slots.length,
+          };
+        });
+
+        // PHASE 1A: Achieve Min Quotas
+        log("PHASE 1A: TARGETING VENDOR MINIMUMS", "iteration-header");
+        runPhase(data, vState, bState, true);
+
+        // PHASE 1B: Fill Remaining
+        log("PHASE 1B: FILLING REMAINING CAPACITY", "iteration-header");
+        runPhase(data, vState, bState, false);
+
+        log("<br>FINAL STABLE ASSIGNMENTS:", "success");
+        Object.keys(bState).forEach((bid) => {
+          bState[bid].accepted.forEach((m) =>
+            log(`[MATCH] ${m.v} <--> ${bid} at ${m.t}`, "success"),
+          );
+        });
+      }
+
+      function runPhase(data, vState, bState, isMinPhase) {
+        let iteration = 0;
+        while (iteration < 20) {
+          iteration++;
+          let proposalsMade = 0;
+
+          // 1. VENDORS PROPOSE BASED ON PREFS
+          data.vendors.forEach((v) => {
+            const state = vState[v.id];
+            const limit = isMinPhase ? data.config.min : data.config.max;
+            if (state.count >= limit) return;
+
+            // Follow the Vendor's preference list
+            for (let bid of v.prefs) {
+              if (state.matchedBuyers.has(bid)) continue;
+
+              const key = `${v.id}-${bid}`;
+              const overlap = data.overlaps[key] || [];
+              const validSlots = overlap.filter(
+                (t) => !state.occupiedTimes.has(t),
+              );
+
+              if (validSlots.length > 0) {
+                log(
+                  `Iter ${iteration}: ${v.id} proposes to ${bid} (Slots: ${validSlots.join(", ")})`,
+                  "proposal",
+                );
+                validSlots.forEach((t) =>
+                  bState[bid].proposals.push({ v: v.id, t: t }),
+                );
+                proposalsMade++;
+                break; // Propose to the best available buyer only
+              }
+            }
+          });
+
+          if (proposalsMade === 0) break;
+
+          // 2. BUYERS REVIEW (Gale-Shapley Selection)
+          data.buyers.forEach((b) => {
+            const state = bState[b.id];
+            if (state.proposals.length === 0) return;
+
+            let options = [...state.accepted, ...state.proposals];
+            // Sort by Buyer's Preference list
+            options.sort(
+              (a, b_opt) => b.prefs.indexOf(a.v) - b.prefs.indexOf(b_opt.v),
+            );
+
+            let final = [];
+            let usedTimes = new Set();
+            let usedVendors = new Set();
+
+            options.forEach((opt) => {
+              // Multi-slot dedup: One per time, one per vendor
+              if (
+                !usedTimes.has(opt.t) &&
+                !usedVendors.has(opt.v) &&
+                final.length < state.capacity
+              ) {
+                final.push(opt);
+                usedTimes.add(opt.t);
+                usedVendors.add(opt.v);
+              }
+            });
+
+            // Handle Breakups
+            state.accepted.forEach((old) => {
+              if (!final.find((n) => n.v === old.v && n.t === old.t)) {
+                log(`   ${b.id} dumps ${old.v} for better vendor`, "breakup");
+                vState[old.v].count--;
+                vState[old.v].matchedBuyers.delete(b.id);
+                vState[old.v].occupiedTimes.delete(old.t);
+              }
+            });
+
+            // Confirm Acceptances
+            final.forEach((m) => {
+              if (
+                !state.accepted.find((old) => old.v === m.v && old.t === m.t)
+              ) {
+                vState[m.v].count++;
+                vState[m.v].matchedBuyers.add(b.id);
+                vState[m.v].occupiedTimes.add(m.t);
+              }
+            });
+            state.accepted = final;
+            state.proposals = [];
+          });
+        }
+      }
+    </script>
+  </body>
+</html>
