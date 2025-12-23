@@ -1,0 +1,36 @@
+{
+  "name": "web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "lint": "biome check .",
+    "dev": "next dev -p 3000",
+    "build": "next build",
+    "start": "next start",
+    "analyze": "ANALYZE=true npm run build",
+    "clean": "git clean -xdf .cache .turbo dist node_modules",
+    "typecheck": "tsc --noEmit --emitDeclarationOnly false"
+  },
+  "dependencies": {
+    "@t3-oss/env-nextjs": "^0.13.8",
+    "@repo/next-config": "workspace:*",
+    "@repo/design-system": "workspace:*",
+    "@repo/seo": "workspace:*",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "next": "16.0.10",
+    "sharp": "^0.34.4",
+    "zod": "^4.1.12",
+    "import-in-the-middle": "^2.0.0",
+    "require-in-the-middle": "7.5.2"
+  },
+  "devDependencies": {
+    "@repo/typescript-config": "workspace:*",
+    "typescript": "catalog:",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "tailwindcss": "^4.1.16",
+    "@biomejs/biome": "2.2.0"
+  }
+}
